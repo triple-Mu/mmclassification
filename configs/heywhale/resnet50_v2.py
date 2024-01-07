@@ -59,7 +59,9 @@ _base_.val_dataloader['dataset']['extensions'] = ['.npy']
 _base_.val_dataloader['dataset']['pipeline'] = test_pipeline
 
 # train and eval setting
-_base_.val_evaluator['topk'] = 1
+# _base_.val_evaluator['topk'] = 1
+val_evaluator = dict(type='BCELossMetric', topk=1)
+test_evaluator = val_evaluator
 
 _base_.optim_wrapper['optimizer']['lr'] = lr
 _base_.optim_wrapper['optimizer']['momentum'] = momentum
@@ -72,4 +74,5 @@ _base_.train_cfg['val_interval'] = val_interval
 
 _base_.default_hooks['logger']['interval'] = log_interval
 _base_.default_hooks['checkpoint']['interval'] = ckpt_interval
-_base_.default_hooks['checkpoint']['save_best'] = 'accuracy/top1'
+# _base_.default_hooks['checkpoint']['save_best'] = 'accuracy/top1'
+_base_.default_hooks['checkpoint']['save_best'] = 'loss/bce_loss'

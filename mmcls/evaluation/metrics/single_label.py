@@ -815,3 +815,21 @@ class ConfusionMatrix(BaseMetric):
         if show:
             plt.show()
         return fig
+
+
+@METRICS.register_module()
+class BCELossMetric(Accuracy):
+    default_prefix: Optional[str] = 'loss'
+
+    def compute_metrics(self, results: List):
+        metrics = super().compute_metrics(results)
+        target = torch.cat([res['gt_label'] for res in results])
+        if 'pred_score' in results[0]:
+            pred = torch.stack([res['pred_score'] for res in results])
+        else:
+            pred = torch.cat([res['pred_label'] for res in results])
+        num_classes = pred.shape[-1]
+        target = F.one_hot(target, num_classes)
+        metrics['bce_loss'] = F.binary_cross_entropy(pred,
+                                                     target.float()).item()
+        return metrics
