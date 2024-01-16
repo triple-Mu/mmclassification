@@ -1192,3 +1192,138 @@ class Albumentations(BaseTransform):
         repr_str = self.__class__.__name__
         repr_str += f'(transforms={repr(self.transforms)})'
         return repr_str
+
+
+@TRANSFORMS.register_module()
+class RandomResizedCropC4(RandomResizedCrop):
+
+    def transform(self, results: dict) -> dict:
+        """Transform function to randomly resized crop images.
+
+        Args:
+            results (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Randomly resized cropped results, 'img_shape'
+                key in result dict is updated according to crop size.
+        """
+        img = results['img']
+        rgb, a = np.split(img, [3], axis=-1)
+        a = a[..., 0]
+        offset_h, offset_w, target_h, target_w = self.rand_crop_params(rgb)
+
+        rgb = mmcv.imcrop(
+            rgb,
+            bboxes=np.array([
+                offset_w, offset_h, offset_w + target_w - 1,
+                offset_h + target_h - 1
+            ]))
+        a = mmcv.imcrop(
+            a,
+            bboxes=np.array([
+                offset_w, offset_h, offset_w + target_w - 1,
+                offset_h + target_h - 1
+            ]))
+
+        rgb = mmcv.imresize(
+            rgb,
+            tuple(self.scale[::-1]),
+            interpolation=self.interpolation,
+            backend=self.backend)
+
+        a = mmcv.imresize(
+            a,
+            tuple(self.scale[::-1]),
+            interpolation=self.interpolation,
+            backend=self.backend)
+
+        img = np.concatenate([rgb, a[..., np.newaxis]], axis=-1)
+
+        results['img'] = img
+        results['img_shape'] = img.shape
+
+        return results
+
+    def __repr__(self):
+        """Print the basic information of the transform.
+
+        Returns:
+            str: Formatted string.
+        """
+        repr_str = self.__class__.__name__ + f'(scale={self.scale}'
+        repr_str += ', crop_ratio_range='
+        repr_str += f'{tuple(round(s, 4) for s in self.crop_ratio_range)}'
+        repr_str += ', aspect_ratio_range='
+        repr_str += f'{tuple(round(r, 4) for r in self.aspect_ratio_range)}'
+        repr_str += f', max_attempts={self.max_attempts}'
+        repr_str += f', interpolation={self.interpolation}'
+        repr_str += f', backend={self.backend})'
+        return repr_str
+
+
+@TRANSFORMS.register_module()
+class ResizeEdgeC4(ResizeEdge):
+
+    def transform(self, results: Dict) -> Dict:
+        """Transform function to resize images.
+
+        Args:
+            results (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Resized results, 'img', 'scale', 'scale_factor',
+            'img_shape' keys are updated in result dict.
+        """
+        assert 'img' in results, 'No `img` field in the input.'
+
+        rgb, a = np.split(results['img'], [3], axis=-1)
+        a = a[..., 0]
+
+        h, w = rgb.shape[:2]
+        if any([
+                # conditions to resize the width
+                self.edge == 'short' and w < h,
+                self.edge == 'long' and w > h,
+                self.edge == 'width',
+        ]):
+            width = self.scale
+            height = int(self.scale * h / w)
+        else:
+            height = self.scale
+            width = int(self.scale * w / h)
+
+        rgb, w_scale_rgb, h_scale_rgb = mmcv.imresize(
+            rgb, (width, height),
+            interpolation=self.interpolation,
+            return_scale=True,
+            backend=self.backend)
+
+        a, w_scale_a, h_scale_a = mmcv.imresize(
+            a, (width, height),
+            interpolation=self.interpolation,
+            return_scale=True,
+            backend=self.backend)
+
+        assert (w_scale_rgb == w_scale_a) and (
+            h_scale_rgb == h_scale_a), 'w_scale and h_scale should be equal'
+
+        img = np.concatenate([rgb, a[..., np.newaxis]], axis=-1)
+        results['img'] = img
+        results['img_shape'] = (height, width)
+        results['scale'] = (width, height)
+        results['scale_factor'] = (w_scale_rgb, h_scale_rgb)
+
+        return results
+
+    def __repr__(self):
+        """Print the basic information of the transform.
+
+        Returns:
+            str: Formatted string.
+        """
+        repr_str = self.__class__.__name__
+        repr_str += f'(scale={self.scale}, '
+        repr_str += f'edge={self.edge}, '
+        repr_str += f'backend={self.backend}, '
+        repr_str += f'interpolation={self.interpolation})'
+        return repr_str
